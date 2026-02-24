@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arena Club — Camera Scanner</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+      --bg: #0f172a; --card: #1e293b; --text: #f1f5f9;
+      --muted: #94a3b8; --border: #334155; --blue: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; padding: 16px;
+    }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .header h1 { font-size: 18px; font-weight: 700; }
+    .back-link { color: var(--blue); font-size: 13px; text-decoration: none; }
+
+    .stats {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; margin-bottom: 16px;
+    }
+    .stat { background: var(--card); border-radius: 10px; padding: 12px; text-align: center; }
+    .stat .num { font-size: 24px; font-weight: 700; }
+    .stat .label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .scan-section { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+
+    #reader-container {
+      width: 100%; max-width: 500px; margin: 0 auto 12px;
+      border-radius: 10px; overflow: hidden;
+      border: 2px solid var(--border); position: relative;
+    }
+    #reader-container video { border-radius: 10px; }
+    #reader-container img[alt="Info icon"] { display: none !important; }
+    #html5-qrcode-anchor-scan-type-change { display: none !important; }
+    #reader__dashboard_section_swaplink { display: none !important; }
+
+    .camera-status {
+      text-align: center; padding: 8px; font-size: 13px;
+      color: var(--muted); min-height: 24px;
+    }
+    .camera-status.scanning { color: var(--green); }
+    .camera-status.paused { color: var(--yellow); }
+    .camera-status.error { color: var(--red); }
+
+    .camera-controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+
+    .btn {
+      padding: 12px 20px; border-radius: 8px; border: none;
+      font-weight: 600; cursor: pointer; font-size: 14px; white-space: nowrap;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-green { background: var(--green); color: #000; }
+    .btn-red { background: var(--red); color: #fff; }
+    .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; }
+
+    .cooldown-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(34, 197, 94, .25); display: flex;
+      align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 700; z-index: 10;
+      pointer-events: none; border-radius: 10px;
+      animation: flashIn .15s ease;
+    }
+    @keyframes flashIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .instant-flash {
+      padding: 14px 16px; border-radius: 10px; margin-bottom: 12px;
+      font-size: 15px; font-weight: 600; text-align: center;
+      animation: pulseIn .25s ease;
+    }
+    .instant-flash.match { background: rgba(34,197,94,.15); border: 2px solid var(--green); color: var(--green); }
+    .instant-flash.no-match { background: rgba(239,68,68,.15); border: 2px solid var(--red); color: var(--red); }
+    .instant-flash.already { background: rgba(234,179,8,.15); border: 2px solid var(--yellow); color: var(--yellow); }
+    @keyframes pulseIn { 0% { transform: scale(.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+    .toast {
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 8px;
+      font-size: 14px; display: flex; align-items: center; gap: 8px;
+      animation: slideIn .2s ease;
+    }
+    @keyframes slideIn { from { opacity:0; transform:translateY(-8px) } }
+    .toast.success { background: #166534; border: 1px solid var(--green); }
+    .toast.warning { background: #854d0e; border: 1px solid var(--yellow); }
+    .toast.error { background: #991b1b; border: 1px solid var(--red); }
+    .toast.info { background: #1e3a5f; border: 1px solid var(--blue); }
+    .toast .badge {
+      font-size: 11px; font-weight: 700; padding: 2px 6px;
+      border-radius: 4px; text-transform: uppercase; flex-shrink: 0;
+    }
+    .toast.success .badge { background: var(--green); color: #000; }
+    .toast.warning .badge { background: var(--yellow); color: #000; }
+    .toast.error .badge { background: var(--red); color: #fff; }
+    .toast.info .badge { background: var(--blue); color: #fff; }
+
+    .history { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
+
+    /* Manual fallback */
+    .manual-row { display: flex; gap: 8px; margin-top: 12px; }
+    .manual-row input {
+      flex: 1; padding: 12px 16px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 16px; font-family: monospace;
+    }
+    .manual-row input:focus { outline: none; border-color: var(--green); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>📷 Camera Scanner</h1>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="num" id="stat-scanned">0</div><div class="label">Scanned</div></div>
+    <div class="stat"><div class="num" id="stat-matched">0</div><div class="label">Matched</div></div>
+    <div class="stat"><div class="num" id="stat-errors">0</div><div class="label">Errors</div></div>
+  </div>
+
+  <div class="scan-section">
+    <div id="instant-feedback"></div>
+    <div id="reader-container"><div id="reader" style="width:100%"></div></div>
+    <div class="camera-status" id="camera-status">Tap Start to begin scanning</div>
+    <div class="camera-controls">
+      <button class="btn btn-green" id="cam-start" onclick="startCamera()">Start Camera</button>
+      <button class="btn" id="cam-pause" onclick="pauseCamera()" style="display:none;background:var(--yellow);color:#000;">Pause</button>
+      <button class="btn btn-red" id="cam-stop" onclick="stopCamera()" style="display:none">Stop</button>
+    </div>
+    <div class="hint">Point camera at barcode. 2s cooldown between reads.</div>
+
+    <div class="manual-row">
+      <input id="barcodeInput" type="text" placeholder="Or type barcode manually…" autocomplete="off" />
+      <button class="btn btn-green" onclick="handleManualScan()">Go</button>
+    </div>
+  </div>
+
+  <div class="history" id="toasts"></div>
+
+<script>
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  ⚠️  PASTE YOUR DEPLOYED WEB APP URL BELOW                 ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  var API_URL = "https://script.google.com/a/macros/arenaclub.com/s/AKfycbwQJvWo2h9EkH9SOdVNsyU7vhf_q7UMA5yt5LUtS2ARprNMzNV1krsA2pC8_uVqyHTS7Q/exec";
+
+  // ── State ──
+  var scannedCount = 0, matchedCount = 0, errorCount = 0;
+  var scanner = null, cameraRunning = false, cameraPaused = false, cooldownActive = false;
+  var COOLDOWN_MS = 2000;
+  var recentCameraScans = {}, processing = {};
+  var trackingIndex = null, flashTimer = null, instantStatus = {};
+
+  // ── API helper (replaces google.script.run) ──
+  function callServer(action, payload) {
+    return fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error("Server returned " + r.status);
+      return r.json();
+    });
+  }
+
+  // ── Load tracking index on startup ──
+  function loadTrackingIndex() {
+    callServer("index")
+      .then(function(idx) { trackingIndex = idx; console.log("✅ Index loaded"); })
+      .catch(function(err) { console.warn("Index load failed:", err); });
+  }
+
+  function instantMatch(barcode) {
+    if (!trackingIndex) return { matched: false, status: "unknown" };
+    var norm = barcode.replace(/\s/g, "");
+    for (var k in trackingIndex) {
+      if (norm.endsWith(k)) {
+        var info = trackingIndex[k];
+        return { matched: true, status: info.received ? "already" : "match", info: info };
+      }
+    }
+    return { matched: false, status: "no_match" };
+  }
+
+  // ── Flash feedback ──
+  function showInstantFlash(barcode, mr) {
+    var c = document.getElementById("instant-feedback");
+    if (flashTimer) clearTimeout(flashTimer);
+    var cls, msg;
+    if (mr.status === "match") { cls = "match"; msg = "✓ MATCH — PO " + mr.info.po + " (" + mr.info.vendor + ")"; }
+    else if (mr.status === "already") { cls = "already"; msg = "⚠ Already received — PO " + mr.info.po; }
+    else if (mr.status === "no_match") { cls = "no-match"; msg = "✗ No match for " + barcode.slice(-12); }
+    else { cls = "match"; msg = "⏳ Checking " + barcode.slice(-12) + "…"; }
+    c.innerHTML = '<div class="instant-flash ' + cls + '">' + escHtml(msg) + '</div>';
+    flashTimer = setTimeout(function() { c.innerHTML = ""; }, 4000);
+  }
+
+  // ── Camera ──
+  function startCamera() {
+    if (cameraRunning) return;
+    if (!scanner) scanner = new Html5Qrcode("reader", { verbose: false });
+    var st = document.getElementById("camera-status");
+    st.textContent = "Starting camera…"; st.className = "camera-status";
+    var cfg = {
+      fps: 10,
+      qrbox: function(vw, vh) { var s = Math.min(vw, vh); return { width: Math.floor(s*.85), height: Math.floor(s*.35) }; },
+      aspectRatio: 1.5,
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.DATA_MATRIX
+      ]
+    };
+    scanner.start({ facingMode: "environment" }, cfg, onCameraScanSuccess, function() {})
+    .then(function() {
+      cameraRunning = true; cameraPaused = false;
+      st.textContent = "📡 Scanning…"; st.className = "camera-status scanning";
+      document.getElementById("cam-start").style.display = "none";
+      document.getElementById("cam-pause").style.display = "inline-block";
+      document.getElementById("cam-stop").style.display = "inline-block";
+    }).catch(function(err) {
+      st.textContent = "Camera error: " + err;
+      st.className = "camera-status error";
+    });
+  }
+
+  function pauseCamera() {
+    if (!scanner || !cameraRunning) return;
+    var b = document.getElementById("cam-pause"), st = document.getElementById("camera-status");
+    if (!cameraPaused) {
+      scanner.pause(true); cameraPaused = true;
+      b.textContent = "Resume"; st.textContent = "⏸ Paused"; st.className = "camera-status paused";
+    } else {
+      scanner.resume(); cameraPaused = false;
+      b.textContent = "Pause"; st.textContent = "📡 Scanning…"; st.className = "camera-status scanning";
+    }
+  }
+
+  function stopCamera() {
+    if (!scanner || !cameraRunning) return;
+    scanner.stop().then(function() {
+      cameraRunning = false; cameraPaused = false;
+      document.getElementById("camera-status").textContent = "Camera stopped";
+      document.getElementById("camera-status").className = "camera-status";
+      document.getElementById("cam-start").style.display = "inline-block";
+      document.getElementById("cam-pause").style.display = "none";
+      document.getElementById("cam-pause").textContent = "Pause";
+      document.getElementById("cam-stop").style.display = "none";
+    }).catch(function() {});
+  }
+
+  function onCameraScanSuccess(d) {
+    var code = d.trim();
+    if (!code || processing[code] || cooldownActive) return;
+    var now = Date.now();
+    if (recentCameraScans[code] && (now - recentCameraScans[code]) < COOLDOWN_MS * 3) return;
+    cooldownActive = true; recentCameraScans[code] = now;
+    showCooldownFlash(code); submitBarcode(code);
+    setTimeout(function() { cooldownActive = false; }, COOLDOWN_MS);
+  }
+
+  function showCooldownFlash(code) {
+    var c = document.getElementById("reader-container"), o = document.createElement("div");
+    o.className = "cooldown-overlay"; o.textContent = "✓ " + code.slice(-8);
+    c.appendChild(o); setTimeout(function() { if (o.parentNode) o.remove(); }, COOLDOWN_MS);
+  }
+
+  // ── Manual input ──
+  document.getElementById("barcodeInput").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") { e.preventDefault(); handleManualScan(); }
+  });
+
+  function handleManualScan() {
+    var inp = document.getElementById("barcodeInput"), raw = inp.value.trim();
+    if (!raw) return;
+    var codes = raw.split(/[\r\n]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+    inp.value = ""; inp.focus();
+    codes.forEach(submitBarcode);
+  }
+
+  // ── Core submit (uses fetch instead of google.script.run) ──
+  function submitBarcode(code) {
+    if (processing[code]) return;
+    processing[code] = true;
+    scannedCount++; updateStats();
+
+    var quick = instantMatch(code);
+    showInstantFlash(code, quick);
+
+    if (quick.status === "match") { playSound("success"); instantStatus[code] = "match"; }
+    else if (quick.status === "already") { playSound("warning"); instantStatus[code] = "already"; }
+    else if (quick.status === "no_match") { playSound("error"); instantStatus[code] = "no_match"; }
+
+    addToast("info", code, "Scanning…");
+
+    callServer("scan", { barcode: code })
+      .then(function(results) { delete processing[code]; handleResult(code, results); })
+      .catch(function(err) { delete processing[code]; handleError(code, err); });
+  }
+
+  function handleResult(code, results) {
+    removeToast(code);
+    if (!Array.isArray(results)) results = [results];
+    var hadMatch = false, hadComplete = false;
+
+    results.forEach(function(r) {
+      if (!r.success) {
+        errorCount++;
+        addToast("error", code, "No match found");
+        if (instantStatus[code] !== "no_match") playSound("error");
+      } else if (r.status === "already_received") {
+        addToast("warning", code, "Already received — PO " + r.po + " (" + r.vendor + ")");
+        if (instantStatus[code] !== "already") playSound("warning");
+      } else if (r.status === "complete") {
+        hadMatch = true; hadComplete = true;
+        addToast("success", code, "✅ PO " + r.po + " COMPLETE — All " + r.total + " received!");
+        showInstantFlash(code, { status: "match", info: { po: r.po, vendor: "ALL " + r.total + " RECEIVED ✅" }});
+        if (trackingIndex) { for (var k in trackingIndex) { if (trackingIndex[k].po === r.po) trackingIndex[k].received = true; } }
+      } else {
+        hadMatch = true;
+        addToast("success", code, "PO " + r.po + " — " + r.received + "/" + r.total + " (" + r.remaining + " left)");
+        if (trackingIndex) { var n = code.replace(/\s/g, ""); for (var k in trackingIndex) { if (n.endsWith(k)) trackingIndex[k].received = true; } }
+      }
+    });
+
+    if (hadMatch) matchedCount++;
+    if (hadComplete) playSound("complete");
+    else if (hadMatch && instantStatus[code] !== "match") playSound("success");
+    delete instantStatus[code];
+    updateStats();
+  }
+
+  function handleError(code, err) {
+    removeToast(code);
+    errorCount++;
+    addToast("error", code, "Server error: " + (err.message || err));
+    if (instantStatus[code] !== "no_match") playSound("error");
+    delete instantStatus[code];
+    updateStats();
+  }
+
+  // ── Toasts ──
+  function addToast(type, code, msg) {
+    var el = document.createElement("div");
+    el.className = "toast " + type; el.dataset.code = code;
+    el.innerHTML = '<span class="badge">' + type + '</span><span><strong>' + escHtml(code) + '</strong> — ' + escHtml(msg) + '</span>';
+    var h = document.getElementById("toasts");
+    h.insertBefore(el, h.firstChild);
+    if (type !== "error") setTimeout(function() { if (el.parentNode) el.remove(); }, 30000);
+  }
+  function removeToast(code) {
+    document.querySelectorAll('.toast.info[data-code="' + CSS.escape(code) + '"]').forEach(function(t) { t.remove(); });
+  }
+
+  function updateStats() {
+    document.getElementById("stat-scanned").textContent = scannedCount;
+    document.getElementById("stat-matched").textContent = matchedCount;
+    document.getElementById("stat-errors").textContent = errorCount;
+  }
+
+  // ── Audio ──
+  var audioCtx;
+  function coin(freq, start, dur, vol) {
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "square"; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, start);
+    g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(start); o.stop(start + dur);
+  }
+  function playSound(type) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var t = audioCtx.currentTime;
+    if (type === "success") { coin(988, t, 0.08, 0.15); coin(1319, t + 0.08, 0.3, 0.15); }
+    else if (type === "complete") { coin(659, t, 0.07, 0.12); coin(784, t + 0.07, 0.07, 0.13); coin(988, t + 0.14, 0.07, 0.14); coin(1319, t + 0.21, 0.4, 0.16); }
+    else if (type === "warning") { coin(659, t, 0.1, 0.1); coin(523, t + 0.12, 0.2, 0.08); }
+    else { coin(220, t, 0.1, 0.12); coin(175, t + 0.12, 0.25, 0.1); }
+  }
+
+  function escHtml(s) { var d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+
+  // ── Init ──
+  window.onload = function() {
+    loadTrackingIndex();
+    // Auto-start camera on mobile
+    if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
+      setTimeout(startCamera, 500);
+    }
+  };
+</script>
+</body>
+</html>
