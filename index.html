@@ -207,9 +207,9 @@
     var st = document.getElementById("camera-status");
     st.textContent = "Starting camera…"; st.className = "camera-status";
     var cfg = {
-      fps: 10,
-      qrbox: function(vw, vh) { var s = Math.min(vw, vh); return { width: Math.floor(s*.85), height: Math.floor(s*.35) }; },
-      aspectRatio: 1.5,
+      fps: 15,
+      qrbox: function(vw, vh) { return { width: Math.floor(vw * 0.9), height: Math.floor(vh * 0.4) }; },
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
       formatsToSupport: [
         Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
         Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
